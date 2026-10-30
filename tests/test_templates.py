@@ -32,32 +32,34 @@ def test_unknown_kind_falls_back_to_ordinary() -> None:
 
 
 def test_extract_variables_in_order_without_duplicates() -> None:
-    text = "Привет, {name}! Бонус {amount} до {date}. {name}, не пропустите."
+    text = "Привет, {{name}}! Бонус {{amount}} до {{date}}. {{name}}, не пропустите."
 
-    assert templates.extract_variables(text) == ["{name}", "{amount}", "{date}"]
+    assert templates.extract_variables(text) == ["{{name}}", "{{amount}}", "{{date}}"]
 
 
 def test_extract_variables_from_title_and_message() -> None:
-    assert templates.extract_variables("{city}: скидка", "Только для {name}") == [
-        "{city}",
-        "{name}",
+    assert templates.extract_variables("{{city}}: скидка", "Только для {{name}}") == [
+        "{{city}}",
+        "{{name}}",
     ]
 
 
-def test_extract_variables_ignores_empty_braces() -> None:
-    assert templates.extract_variables("{} { } и просто {скобки") == []
+def test_extract_variables_ignores_single_braces() -> None:
+    assert templates.extract_variables("{} { } и просто {скобки}") == []
 
 
 def test_substitute_variables_replaces_known_values() -> None:
-    text = "Привет, {name}! Бонус {amount}."
+    text = "Привет, {{name}}! Бонус {{amount}}."
 
-    assert templates.substitute_variables(text, {"{name}": "Анна"}) == (
-        "Привет, Анна! Бонус {amount}."
+    assert templates.substitute_variables(text, {"{{name}}": "Анна"}) == (
+        "Привет, Анна! Бонус {{amount}}."
     )
 
 
 def test_substitute_variables_keeps_placeholder_when_empty() -> None:
-    assert templates.substitute_variables("Выигрыш {amount}", {"{amount}": ""}) == "Выигрыш {amount}"
+    assert templates.substitute_variables("Выигрыш {{amount}}", {"{{amount}}": ""}) == (
+        "Выигрыш {{amount}}"
+    )
 
 
 def test_message_length_sums_title_and_text() -> None:

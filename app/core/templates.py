@@ -32,16 +32,23 @@ KIND_SHORT: dict[str, str] = {
 IMAGE_KINDS: tuple[str, ...] = (ORDINARY, POPUP)
 TEXT_KINDS: tuple[str, ...] = (PUSH, SMS)
 
-VARIABLES: tuple[str, ...] = ("{name}", "{amount}", "{date}", "{city}", "{card}")
+VARIABLES: tuple[str, ...] = (
+    "{{name}}",
+    "{{amount}}",
+    "{{date}}",
+    "{{city}}",
+    "{{card}}",
+)
 
-VARIABLE_PATTERN = re.compile(r"\{[A-Za-zА-Яа-я0-9_]+\}")
+# Переменные пишутся в двойных фигурных скобках: {{name}}
+VARIABLE_PATTERN = re.compile(r"\{\{[A-Za-zА-Яа-я0-9_]+\}\}")
 
 VARIABLE_HINTS: dict[str, str] = {
-    "{name}": "имя клиента",
-    "{amount}": "сумма",
-    "{date}": "дата",
-    "{city}": "город",
-    "{card}": "карта",
+    "{{name}}": "имя клиента",
+    "{{amount}}": "сумма",
+    "{{date}}": "дата",
+    "{{city}}": "город",
+    "{{card}}": "карта",
 }
 
 

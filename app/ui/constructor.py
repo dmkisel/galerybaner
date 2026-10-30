@@ -44,6 +44,26 @@ TEXT_PREVIEW_STYLE = """
 """
 
 
+def variable_inputs(variables: list[str], prefix: str) -> dict[str, str]:
+    """Поля подстановки: слева переменная без скобок, справа значение."""
+    values: dict[str, str] = {}
+    if not variables:
+        return values
+
+    st.caption("Подстановка переменных")
+    for variable in variables:
+        name = variable.replace("{", "").replace("}", "")
+        name_col, value_col = st.columns([1, 1.8], gap="small")
+        name_col.markdown(f"`{name}`")
+        values[variable] = value_col.text_input(
+            name,
+            key=f"var_{prefix}_{name}",
+            placeholder=templates.VARIABLE_HINTS.get(variable, ""),
+            label_visibility="collapsed",
+        )
+    return values
+
+
 def length_caption(kind: str, title: str, message: str) -> str:
     """Счётчики символов: без лимитов, просто длины."""
     parts = []
@@ -274,10 +294,12 @@ def render_channel_mode(kind: str, template) -> None:
         title = st.text_input("Тема", key=title_key) if templates.has_title(kind) else ""
         message = st.text_area("Текст сообщения", key=message_key, height=140)
 
-        st.caption(length_caption(kind, title, message))
         variables = templates.extract_variables(title, message)
-        if variables:
-            st.caption("Переменные: " + " ".join(variables))
+        variable_values = variable_inputs(variables, f"ch_{kind}")
+        rendered_title = templates.substitute_variables(title, variable_values)
+        rendered_message = templates.substitute_variables(message, variable_values)
+
+        st.caption(length_caption(kind, rendered_title, rendered_message))
 
         if st.button("Сохранить в шаблон", type="primary", use_container_width=True):
             try:
@@ -292,7 +314,7 @@ def render_channel_mode(kind: str, template) -> None:
 
     with preview_col:
         st.markdown(
-            channel_preview_html(kind, title, message),
+            channel_preview_html(kind, rendered_title, rendered_message),
             unsafe_allow_html=True,
         )
 
@@ -350,6 +372,12 @@ if text_template is not None and templates.has_image(text_template.kind):
 
 st.session_state.setdefault("c_theme_text", "")
 st.session_state.setdefault("c_message_text", "")
+
+# Глубокие ссылки (?banner_id=, ?text_id=) один раз переключают тип на нужный.
+deep_link_key = f"deep_kind_{requested_id}_{text_id_param}"
+if (requested_id is not None or text_id_param) and not st.session_state.get(deep_link_key):
+    st.session_state["constructor_kind"] = default_kind
+    st.session_state[deep_link_key] = True
 
 kind_key = st.radio(
     "Тип",
@@ -416,6 +444,11 @@ with controls:
         height=80,
         placeholder="Только до воскресенья",
     )
+
+    banner_variables = templates.extract_variables(theme_text, message_text)
+    variable_values = variable_inputs(banner_variables, "banner")
+    render_theme = templates.substitute_variables(theme_text, variable_values)
+    render_message = templates.substitute_variables(message_text, variable_values)
 
     with st.expander("Шрифты", expanded=True):
         theme_scale_percent = st.slider(
@@ -533,8 +566,8 @@ theme_scale = theme_scale_percent / 100
 message_scale = message_scale_percent / 100
 
 spec = build_spec(
-    theme_text=theme_text,
-    message_text=message_text,
+    theme_text=render_theme,
+    message_text=render_message,
     theme_scale=theme_scale,
     message_scale=message_scale,
     theme_pos_x=pos_x,
@@ -605,8 +638,8 @@ with preview_area:
     else:
         image, error, font_px = render_preview(
             banner.url,
-            theme_text,
-            message_text,
+            render_theme,
+            render_message,
             theme_scale,
             message_scale,
             pos_x,
