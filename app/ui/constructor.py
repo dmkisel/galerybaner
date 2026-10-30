@@ -198,6 +198,89 @@ def render_popup_mode(banner) -> None:
             st.image(image)
 
 
+CHANNEL_STYLE = """
+<style>
+  .phone { width: 300px; margin: 0 auto; border-radius: 28px; padding: 10px 10px 16px;
+           background: #0F1318; border: 1px solid rgba(255,255,255,0.14);
+           box-shadow: 0 16px 40px rgba(0,0,0,0.45); }
+  .bar { display: flex; justify-content: space-between; font-size: 10px; color: #7C8797;
+         padding: 2px 6px 10px; }
+  .screen { background: #171C23; border-radius: 20px; padding: 12px; min-height: 240px; }
+  .push { display: flex; gap: 10px; background: rgba(30,37,46,0.96);
+          border-radius: 16px; padding: 12px; border: 1px solid rgba(255,255,255,0.08); }
+  .push-icon { width: 32px; height: 32px; border-radius: 9px; flex: 0 0 32px;
+               background: linear-gradient(135deg, #F5A524, #E5573F); }
+  .push-title { color: #E6EAF0; font-weight: 600; font-size: 12px; }
+  .push-text { color: #C3CCD8; font-size: 11px; line-height: 1.35; margin-top: 2px;
+               overflow-wrap: anywhere; }
+  .push-app { color: #7C8797; font-size: 10px; margin-top: 6px; }
+  .chat { display: flex; }
+  .bubble { max-width: 92%; padding: 10px 12px; border-radius: 16px 16px 16px 4px;
+            background: #1F262F; color: #E6EAF0; font-size: 12px; line-height: 1.4;
+            border: 1px solid rgba(255,255,255,0.06); overflow-wrap: anywhere; }
+  .time { font-size: 9px; color: #7C8797; margin-top: 6px; text-align: right; }
+</style>
+"""
+
+
+def channel_preview_html(kind: str, title: str, message: str) -> str:
+    """Как текст выглядит в канале: пуш-уведомление или СМС в чате."""
+    normalized = templates.normalize_kind(kind)
+    safe_message = html.escape(message or "").replace("\n", "<br>") or "текст пустой"
+
+    if normalized == templates.SMS:
+        inner = (
+            f'<div class="chat"><div class="bubble">{safe_message}'
+            f'<div class="time">сейчас</div></div></div>'
+        )
+    else:
+        safe_title = html.escape(title or "")
+        title_html = f'<div class="push-title">{safe_title}</div>' if safe_title else ""
+        inner = (
+            f'<div class="push"><div class="push-icon"></div><div>'
+            f'{title_html}<div class="push-text">{safe_message}</div>'
+            f'<div class="push-app">Приложение · сейчас</div></div></div>'
+        )
+
+    return (
+        f"{CHANNEL_STYLE}"
+        f'<div class="phone"><div class="bar"><span>9:41</span>'
+        f"<span>Приложение</span><span>100 %</span></div>"
+        f'<div class="screen">{inner}</div></div>'
+    )
+
+
+def render_channel_template(template) -> None:
+    """Предпросмотр текстового шаблона из Блокнота: push и СМС без баннера."""
+    kind = templates.normalize_kind(template.kind)
+    st.caption(f"{templates.kind_label(kind)} · предпросмотр текста из Блокнота")
+
+    text_col, preview_col = st.columns([1, 1], gap="large")
+
+    with text_col:
+        if template.title:
+            st.markdown(f"**{html.escape(template.title)}**")
+        st.write(template.message or "— пусто —")
+
+        parts = []
+        if templates.has_title(kind):
+            parts.append(f"Тема {len(template.title.strip())}")
+        parts.append(f"Текст {len(template.message.strip())}")
+        st.caption(" · ".join(parts))
+
+        variables = templates.extract_variables(template.title, template.message)
+        if variables:
+            st.caption("Переменные: " + " ".join(variables))
+
+        st.link_button("Открыть в Блокноте", "/notepad", use_container_width=True)
+
+    with preview_col:
+        st.markdown(
+            channel_preview_html(kind, template.title, template.message),
+            unsafe_allow_html=True,
+        )
+
+
 st.title("Конструктор")
 
 with session_scope() as session:
@@ -259,6 +342,13 @@ if text_id_param.isdigit():
 
 st.session_state.setdefault("c_theme_text", "")
 st.session_state.setdefault("c_message_text", "")
+
+if text_id_param.isdigit():
+    with session_scope() as session:
+        channel_template = repo.get_text_template(session, int(text_id_param))
+    if channel_template is not None and not templates.has_image(channel_template.kind):
+        render_channel_template(channel_template)
+        st.stop()
 
 kind_key = st.radio(
     "Тип баннера",
