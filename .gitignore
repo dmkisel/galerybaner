@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+.env
+data/cache/
+data/history/
+
+# Скриншоты-референсы и служебные файлы агента не публикуются:
+# в кадрах банковского приложения есть имя клиента и данные карт.
+AppToBanner/
+.zwork/
+*.log
+compose-*.log
+
+.idea/
+.vscode/
+.DS_Store

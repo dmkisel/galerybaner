@@ -1,0 +1,6 @@
+streamlit>=1.40,<2
+SQLAlchemy>=2.0.30,<3
+psycopg[binary]>=3.2,<4
+alembic>=1.13,<2
+Pillow>=10.4
+requests>=2.31,<3
