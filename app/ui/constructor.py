@@ -250,33 +250,49 @@ def channel_preview_html(kind: str, title: str, message: str) -> str:
     )
 
 
-def render_channel_template(template) -> None:
-    """Предпросмотр текстового шаблона из Блокнота: push и СМС без баннера."""
-    kind = templates.normalize_kind(template.kind)
-    st.caption(f"{templates.kind_label(kind)} · предпросмотр текста из Блокнота")
+def render_channel_mode(kind: str, template) -> None:
+    """Раздел конструктора для Push и СМС: текст, счётчики и предпросмотр в телефоне."""
+    kind = templates.normalize_kind(kind)
+    title_key = f"ch_{kind}_title"
+    message_key = f"ch_{kind}_message"
 
-    text_col, preview_col = st.columns([1, 1], gap="large")
+    if template is not None and templates.normalize_kind(template.kind) == kind:
+        applied_key = f"ch_applied_{template.id}"
+        if not st.session_state.get(applied_key):
+            st.session_state[title_key] = template.title
+            st.session_state[message_key] = template.message
+            st.session_state[applied_key] = True
 
-    with text_col:
-        if template.title:
-            st.markdown(f"**{html.escape(template.title)}**")
-        st.write(template.message or "— пусто —")
+    st.session_state.setdefault(title_key, "")
+    st.session_state.setdefault(message_key, "")
 
-        parts = []
-        if templates.has_title(kind):
-            parts.append(f"Тема {len(template.title.strip())}")
-        parts.append(f"Текст {len(template.message.strip())}")
-        st.caption(" · ".join(parts))
+    form_col, preview_col = st.columns([1, 1], gap="large")
 
-        variables = templates.extract_variables(template.title, template.message)
+    with form_col:
+        st.caption(f"{templates.kind_label(kind)} · текстовый шаблон без картинки")
+
+        title = st.text_input("Тема", key=title_key) if templates.has_title(kind) else ""
+        message = st.text_area("Текст сообщения", key=message_key, height=140)
+
+        st.caption(length_caption(kind, title, message))
+        variables = templates.extract_variables(title, message)
         if variables:
             st.caption("Переменные: " + " ".join(variables))
+
+        if st.button("Сохранить в шаблон", type="primary", use_container_width=True):
+            try:
+                with session_scope() as session:
+                    repo.create_text_template(session, kind=kind, title=title, message=message)
+            except repo.ValidationError as exc:
+                st.error(str(exc))
+            else:
+                st.success("Текст сохранён в Блокнот")
 
         st.link_button("Открыть в Блокноте", "/notepad", use_container_width=True)
 
     with preview_col:
         st.markdown(
-            channel_preview_html(kind, template.title, template.message),
+            channel_preview_html(kind, title, message),
             unsafe_allow_html=True,
         )
 
@@ -292,31 +308,27 @@ with session_scope() as session:
         session, days=settings.recent_texts_days, limit=8, kind="message"
     )
 
-if not briefs:
-    st.info(
-        "Нет Ordinary баннеров. Добавьте шаблон этого типа в «Галерее шаблонов».",
-        icon="🖼️",
-    )
-    st.stop()
-
 by_id = {brief.id: brief for brief in briefs}
 
 requested_param = st.query_params.get("banner_id")
 requested_id = int(requested_param) if str(requested_param).isdigit() else None
 
-available_kinds = [
-    kind
-    for kind in templates.IMAGE_KINDS
-    if any(templates.normalize_kind(brief.kind) == kind for brief in briefs)
-] or list(templates.IMAGE_KINDS)
+text_id_param = str(st.query_params.get("text_id", ""))
+text_template = None
+if text_id_param.isdigit():
+    with session_scope() as session:
+        text_template = repo.get_text_template(session, int(text_id_param))
 
-default_kind = (
-    templates.normalize_kind(by_id[requested_id].kind)
-    if requested_id in by_id
-    else templates.normalize_kind(briefs[0].kind)
-)
-if default_kind not in available_kinds:
-    default_kind = available_kinds[0]
+kind_options = list(templates.KINDS)
+
+if text_template is not None and not templates.has_image(text_template.kind):
+    default_kind = templates.normalize_kind(text_template.kind)
+elif requested_id in by_id:
+    default_kind = templates.normalize_kind(by_id[requested_id].kind)
+elif briefs:
+    default_kind = templates.normalize_kind(briefs[0].kind)
+else:
+    default_kind = templates.ORDINARY
 
 # Подстановку из истории делаем до создания виджетов: после создания Streamlit
 # запрещает менять значение через session_state.
@@ -328,36 +340,29 @@ for pending_key, state_key in (
     if pending is not None:
         st.session_state[state_key] = pending
 
-# Переход из Блокнота: подставляем сохранённый текст один раз.
-text_id_param = str(st.query_params.get("text_id", ""))
-if text_id_param.isdigit():
+# Переход из Блокнота на баннер: подставляем сохранённый текст один раз.
+if text_template is not None and templates.has_image(text_template.kind):
     applied_key = f"text_applied_{text_id_param}"
     if not st.session_state.get(applied_key):
-        with session_scope() as session:
-            text_template = repo.get_text_template(session, int(text_id_param))
-        if text_template is not None:
-            st.session_state["c_theme_text"] = text_template.title
-            st.session_state["c_message_text"] = text_template.message
+        st.session_state["c_theme_text"] = text_template.title
+        st.session_state["c_message_text"] = text_template.message
         st.session_state[applied_key] = True
 
 st.session_state.setdefault("c_theme_text", "")
 st.session_state.setdefault("c_message_text", "")
 
-if text_id_param.isdigit():
-    with session_scope() as session:
-        channel_template = repo.get_text_template(session, int(text_id_param))
-    if channel_template is not None and not templates.has_image(channel_template.kind):
-        render_channel_template(channel_template)
-        st.stop()
-
 kind_key = st.radio(
-    "Тип баннера",
-    available_kinds,
-    index=available_kinds.index(default_kind),
+    "Тип",
+    kind_options,
+    index=kind_options.index(default_kind),
     format_func=templates.kind_label,
     horizontal=True,
     key="constructor_kind",
 )
+
+if not templates.has_image(kind_key):
+    render_channel_mode(kind_key, text_template)
+    st.stop()
 
 kind_briefs = [
     brief for brief in briefs if templates.normalize_kind(brief.kind) == kind_key
@@ -368,7 +373,10 @@ if requested_id in by_id and templates.normalize_kind(by_id[requested_id].kind) 
         kind_briefs = ([by_id[requested_id]] + kind_briefs)[:3]
 
 if not kind_briefs:
-    st.info("Для этого типа ещё нет баннеров — добавьте их в галерее.", icon="🖼️")
+    st.info(
+        f"Для типа «{templates.kind_label(kind_key)}» ещё нет баннеров — добавьте их в галерее.",
+        icon="🖼️",
+    )
     st.stop()
 
 banner_id = st.selectbox(
